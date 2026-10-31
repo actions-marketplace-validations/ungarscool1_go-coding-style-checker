@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test -count=1 ./...
+
+  action-passes-on-this-repository:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./
+
+  action-fails-on-a-violation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Write a file over the line width ceiling
+        run: |
+          mkdir -p "$RUNNER_TEMP/violation"
+          printf 'package wide\n\nfunc F() int { return %0200d }\n' 1 \
+            > "$RUNNER_TEMP/violation/wide.go"
+      - id: check
+        continue-on-error: true
+        uses: ./
+        with:
+          root: ${{ runner.temp }}/violation
+      - name: Require the action to have failed
+        env:
+          OUTCOME: ${{ steps.check.outcome }}
+        run: test "$OUTCOME" = failure
